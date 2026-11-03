@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">挪车拍记</string>
+    <string name="hint_ready">把镜头对准挡风玻璃上的挪车电话牌，点击快门识别</string>
+    <string name="recognizing">正在识别号码…</string>
+    <string name="need_camera">需要摄像头权限才能识别挪车电话</string>
+    <string name="capture_failed">拍照失败，请重试</string>
+    <string name="recognize_failed">识别失败：%1$s</string>
+    <string name="confirm_title">确认识别结果</string>
+    <string name="default_title">挪车记录 %1$s</string>
+    <string name="untitled">未命名记录</string>
+    <string name="no_text">没有识别到文字，请靠近一些重新拍摄</string>
+    <string name="candidates">识别到多个号码候选：%1$s</string>
+    <string name="save">保存记录</string>
+    <string name="discard">放弃</string>
+    <string name="phone_too_short">号码太短，请检查后重新填写</string>
+    <string name="saved">已保存</string>
+    <string name="records_entry">记录</string>
+    <string name="records_title">挪车记录</string>
+    <string name="records_empty">还没有记录，去拍一张挪车电话吧</string>
+    <string name="back">返回</string>
+    <string name="photo">看照片</string>
+    <string name="dial">拨打</string>
+    <string name="delete">删除</string>
+    <string name="cancel">取消</string>
+    <string name="delete_confirm">确定删除「%1$s」这条记录吗？</string>
+    <string name="no_dialer">本机没有可用的拨号应用</string>
+    <string name="photo_empty">这条记录没有照片</string>
+    <string name="hint_title">标题</string>
+    <string name="hint_phone">挪车电话</string>
+    <string name="raw_text_label">识别到的原始文字（仅供参考）</string>
+</resources>
