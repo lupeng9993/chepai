@@ -71,4 +71,14 @@
     <string name="pwd_mismatch">两次输入不一致，重新设置</string>
     <string name="btn_clear">清空</string>
     <string name="btn_del">⌫</string>
+
+    <string name="import_btn">导入</string>
+    <string name="import_title">导入到%1$s</string>
+    <string name="import_will">将导入 %1$d 条</string>
+    <string name="import_skip">跳过 %1$d 条（重复 %2$d ｜ 格式问题 %3$d）</string>
+    <string name="import_bad_rows">问题行（表格第 %1$s 行）：号码缺失或非 7~12 位数字</string>
+    <string name="import_confirm">确认导入</string>
+    <string name="import_done">已导入 %1$d 条</string>
+    <string name="import_invalid">文件无法识别：不是有效表格或找不到「号码」列</string>
+    <string name="import_none">没有可导入的新记录（全部重复或格式问题）</string>
 </resources>

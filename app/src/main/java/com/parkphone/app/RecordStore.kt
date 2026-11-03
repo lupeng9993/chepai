@@ -73,6 +73,36 @@ object RecordStore {
         write(ctx, arr)
     }
 
+    /** 批量导入：目标区内已有相同号码则跳过；返回 Pair(实际导入, 重复跳过) */
+    fun importBatch(
+        ctx: Context,
+        parsed: List<ExcelImporter.ParsedRow>,
+        hidden: Boolean,
+        existingPhones: Set<String>
+    ): Pair<Int, Int> {
+        var dup = 0
+        val arr = dump(ctx)
+        val seen = HashSet(existingPhones)
+        val base = System.currentTimeMillis()
+        parsed.forEachIndexed { i, p ->
+            if (p.phone in seen) { dup++; return@forEachIndexed }
+            seen.add(p.phone)
+            arr.put(
+                JSONObject()
+                    .put("id", base + i)
+                    .put("title", p.title.ifBlank { ctx.getString(R.string.untitled) })
+                    .put("phone", p.phone)
+                    .put("time", p.time)
+                    .put("callCount", p.callCount)
+                    .put("color", p.color)
+                    .put("note", p.note)
+                    .put("hidden", hidden)
+            )
+        }
+        write(ctx, arr)
+        return (parsed.size - dup) to dup
+    }
+
     fun delete(ctx: Context, rec: ParkRecord) {
         val arr = dump(ctx)
         keepIf(arr) { it.id != rec.id }

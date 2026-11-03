@@ -49,6 +49,23 @@
         app:layout_constraintBottom_toBottomOf="@id/btnBack" />
 
     <TextView
+        android:id="@+id/btnImport"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/tag_add_bg"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:text="@string/import_btn"
+        android:textColor="@color/mark_blue"
+        android:textSize="13sp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btnExport"
+        app:layout_constraintBottom_toBottomOf="@id/btnBack" />
+
+    <TextView
         android:id="@+id/tvEmpty"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

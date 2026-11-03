@@ -21,6 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -30,6 +31,9 @@ import com.parkphone.app.databinding.DialogNoteBinding
 import com.parkphone.app.databinding.DialogPasswordBinding
 import com.parkphone.app.databinding.ItemGroupHeaderBinding
 import com.parkphone.app.databinding.ItemRecordBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -54,6 +58,11 @@ class RecordsActivity : AppCompatActivity() {
             if (uri != null) writeExport(uri)
         }
 
+    private val openDoc =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) importFrom(uri)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityRecordsBinding.inflate(layoutInflater)
@@ -65,6 +74,9 @@ class RecordsActivity : AppCompatActivity() {
             if (hiddenZone) exitHidden() else finish()
         }
         binding.btnExport.setOnClickListener { showExportMenu() }
+        binding.btnImport.setOnClickListener {
+            openDoc.launch(arrayOf("*/*"))
+        }
         binding.tvHead.setOnClickListener { onHeadTap() }
 
         applyTheme()
@@ -545,6 +557,76 @@ class RecordsActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    // ---------------- 导入 ----------------
+
+    private fun importFrom(uri: Uri) {
+        val zoneName = getString(if (hiddenZone) R.string.hidden_title else R.string.records_title)
+        lifecycleScope.launch {
+            val parsed = withContext(Dispatchers.IO) {
+                try {
+                    val tmp = File(cacheDir, "import_tmp.xlsx")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        tmp.outputStream().use { input.copyTo(it) }
+                    }
+                    if (!tmp.exists() || tmp.length() <= 0) null
+                    else ExcelImporter.parse(tmp).also { tmp.delete() }
+                } catch (t: Throwable) {
+                    null
+                }
+            }
+            if (parsed == null) {
+                Toast.makeText(this@RecordsActivity, R.string.import_invalid, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+
+            // 当前区已有号码集合 → 统计重复
+            val existing = RecordStore.all(this@RecordsActivity, hiddenZone)
+                .map { it.phone }.toHashSet()
+            val seen = HashSet<String>()
+            val good = ArrayList<ExcelImporter.ParsedRow>()
+            var dup = 0
+            parsed.rows.forEach { r ->
+                if (r.phone in existing || !seen.add(r.phone)) dup++ else good.add(r)
+            }
+
+            if (good.isEmpty()) {
+                Toast.makeText(this@RecordsActivity, R.string.import_none, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+
+            val sb = StringBuilder()
+            sb.append(getString(R.string.import_will, good.size)).append(" ｜ ")
+                .append(getString(R.string.import_skip, dup + parsed.badRows.size, dup, parsed.badRows.size))
+                .append('\n')
+            if (parsed.badRows.isNotEmpty()) {
+                val shown = parsed.badRows.take(8).joinToString("、")
+                sb.append(getString(R.string.import_bad_rows, shown))
+            }
+
+            val msg = TextView(this@RecordsActivity).apply {
+                text = sb.toString()
+                textSize = 13f
+                setPadding(24, 12, 24, 12)
+            }
+            MaterialAlertDialogBuilder(this@RecordsActivity)
+                .setTitle(getString(R.string.import_title, zoneName))
+                .setView(android.widget.ScrollView(this@RecordsActivity).apply { addView(msg) })
+                .setPositiveButton(R.string.import_confirm) { _, _ ->
+                    val (ok, skipped) = RecordStore.importBatch(
+                        this@RecordsActivity, good, hiddenZone, existing
+                    )
+                    Toast.makeText(
+                        this@RecordsActivity,
+                        getString(R.string.import_done, ok),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    refresh()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
     }
 
     // ---------------- 导出 ----------------
