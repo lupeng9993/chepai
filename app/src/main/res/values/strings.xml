@@ -81,4 +81,8 @@
     <string name="import_done">已导入 %1$d 条</string>
     <string name="import_invalid">文件无法识别：不是有效表格或找不到「号码」列</string>
     <string name="import_none">没有可导入的新记录（全部重复或格式问题）</string>
+
+    <string name="crash_title">上次运行异常退出</string>
+    <string name="crash_copy">复制日志</string>
+    <string name="crash_copied">已复制，发给开发者即可定位问题</string>
 </resources>

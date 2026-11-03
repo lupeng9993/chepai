@@ -31,20 +31,25 @@ object RecordStore {
         val raw = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY, "[]") ?: "[]"
         val list = mutableListOf<ParkRecord>()
-        val arr = JSONArray(raw)
-        for (i in 0 until arr.length()) {
-            val o = arr.getJSONObject(i)
-            val r = ParkRecord(
-                o.getLong("id"),
-                o.optString("title", ""),
-                o.getString("phone"),
-                o.getLong("time"),
-                o.optInt("callCount", 0),
-                o.optInt("color", 3),
-                o.optString("note", ""),
-                o.optBoolean("hidden", false)
-            )
-            if (r.hidden == hidden) list.add(r)
+        // 全程容错：任何一条脏数据只跳过该条，不影响整个列表加载
+        runCatching {
+            val arr = JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val phone = o.optString("phone")
+                if (phone.isBlank()) continue
+                val r = ParkRecord(
+                    id = o.optLong("id", System.currentTimeMillis() + i),
+                    title = o.optString("title").ifBlank { ctx.getString(R.string.untitled) },
+                    phone = phone,
+                    time = o.optLong("time", System.currentTimeMillis()),
+                    callCount = o.optInt("callCount", 0).coerceAtLeast(0),
+                    color = o.optInt("color", 3).let { if (it in 0..3) it else 3 },
+                    note = o.optString("note"),
+                    hidden = o.optBoolean("hidden", false)
+                )
+                if (r.hidden == hidden) list.add(r)
+            }
         }
         return list
     }
@@ -199,30 +204,34 @@ object RecordStore {
         val arr = JSONArray()
         val raw = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY, "[]") ?: "[]"
-        val old = JSONArray(raw)
-        for (i in 0 until old.length()) arr.put(old.getJSONObject(i))
+        runCatching {
+            val old = JSONArray(raw)
+            for (i in 0 until old.length()) {
+                old.optJSONObject(i)?.let { arr.put(it) }
+            }
+        }
         return arr
     }
 
     private fun keepIf(arr: JSONArray, keep: (ParkRecord) -> Boolean) {
         val items = mutableListOf<JSONObject>()
         while (arr.length() > 0) {
-            val o = arr.getJSONObject(0)
+            val o = arr.optJSONObject(0)
             arr.remove(0)
-            if (keep(fromJson(o))) items.add(o)
+            if (o != null && keep(fromJson(o))) items.add(o)
         }
         items.forEach { arr.put(it) }
     }
 
     private fun fromJson(o: JSONObject) = ParkRecord(
-        o.getLong("id"),
-        o.optString("title", ""),
-        o.getString("phone"),
-        o.getLong("time"),
-        o.optInt("callCount", 0),
-        o.optInt("color", 3),
-        o.optString("note", ""),
-        o.optBoolean("hidden", false)
+        id = o.optLong("id", System.currentTimeMillis()),
+        title = o.optString("title"),
+        phone = o.optString("phone"),
+        time = o.optLong("time", System.currentTimeMillis()),
+        callCount = o.optInt("callCount", 0).coerceAtLeast(0),
+        color = o.optInt("color", 3).let { if (it in 0..3) it else 3 },
+        note = o.optString("note"),
+        hidden = o.optBoolean("hidden", false)
     )
 
     private fun toJson(r: ParkRecord) = JSONObject()

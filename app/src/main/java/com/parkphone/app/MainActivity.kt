@@ -59,6 +59,28 @@ class MainActivity : AppCompatActivity() {
 
         if (hasCameraPermission()) startCamera()
         else cameraPermission.launch(Manifest.permission.CAMERA)
+
+        showCrashIfNeeded()
+    }
+
+    /** 如果上一次运行异常退出，提示并允许复制日志 */
+    private fun showCrashIfNeeded() {
+        val log = CrashGuard.take() ?: return
+        val tv = android.widget.TextView(this).apply {
+            text = log.take(1200)
+            textSize = 11f
+            setPadding(32, 16, 32, 16)
+            setTextIsSelectable(true)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.crash_title)
+            .setView(android.widget.ScrollView(this).apply { addView(tv) })
+            .setPositiveButton(R.string.crash_copy) { _, _ ->
+                CrashGuard.copy(this, log)
+                Toast.makeText(this, R.string.crash_copied, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     override fun onDestroy() {
