@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#1565C0</color>
+    <color name="mark_blue">#1E88E5</color>
+    <color name="mark_green">#43A047</color>
+    <color name="mark_orange">#FB8C00</color>
+    <color name="danger_red">#C62828</color>
+    <color name="light_bg">#FAFAFA</color>
+    <color name="light_card">#FFFFFF</color>
+    <color name="light_stroke">#E3E6EA</color>
+    <color name="light_text">#333333</color>
+    <color name="light_sub">#888888</color>
+    <color name="group_bg">#E7EEF6</color>
+    <color name="group_text">#3D5A75</color>
+    <color name="dark_bg">#1C2733</color>
+    <color name="dark_card">#263442</color>
+    <color name="dark_stroke">#3A4D61</color>
+    <color name="dark_text">#E8EEF5</color>
+    <color name="dark_sub">#8FA6BB</color>
+    <color name="dark_group_bg">#2C3D4F</color>
+    <color name="dark_group_text">#9ECBFF</color>
 </resources>

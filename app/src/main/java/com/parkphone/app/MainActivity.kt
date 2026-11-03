@@ -3,12 +3,11 @@ package com.parkphone.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.view.Surface
 import android.view.View
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -135,13 +134,10 @@ class MainActivity : AppCompatActivity() {
         }
         recognizer.process(image)
             .addOnSuccessListener { result ->
+                binding.btnShutter.isEnabled = true
+                binding.status.setText(R.string.hint_ready)
                 val text = result.text
-                lifecycleScope.launch {
-                    val bitmap = withContext(Dispatchers.IO) { decodeSampled(file, 1280) }
-                    binding.btnShutter.isEnabled = true
-                    binding.status.setText(R.string.hint_ready)
-                    showConfirmDialog(file, text, PhoneExtractor.extract(text), bitmap)
-                }
+                showConfirmDialog(file, text, PhoneExtractor.extract(text))
             }
             .addOnFailureListener { e -> onRecognizeFailed(file, e) }
     }
@@ -157,9 +153,7 @@ class MainActivity : AppCompatActivity() {
         ).show()
     }
 
-    private fun showConfirmDialog(
-        file: File, rawText: String, phones: List<String>, bitmap: Bitmap?
-    ) {
+    private fun showConfirmDialog(file: File, rawText: String, phones: List<String>) {
         val df = DialogConfirmBinding.inflate(layoutInflater)
         val fmt = SimpleDateFormat("MM月dd日 HH:mm", Locale.CHINA)
         df.etTitle.setText(getString(R.string.default_title, fmt.format(Date())))
@@ -173,6 +167,32 @@ class MainActivity : AppCompatActivity() {
             df.tvCandidates.visibility = View.GONE
         }
 
+        // 历史标题快捷选择（最多 4 个）
+        val titles = RecordStore.titles(this).take(4)
+        if (titles.isNotEmpty()) {
+            val density = resources.displayMetrics.density
+            titles.forEach { t ->
+                val chip = TextView(this).apply {
+                    text = t
+                    textSize = 12f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setTextColor(0xFF1565C0.toInt())
+                    background = ContextCompat.getDrawable(this@MainActivity, R.drawable.tag_bg)
+                    val h = (10 * density).toInt()
+                    val v = (5 * density).toInt()
+                    setPadding(h, v, h, v)
+                    val lp = android.widget.LinearLayout.LayoutParams(
+                        0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                    )
+                    lp.marginEnd = (6 * density).toInt()
+                    layoutParams = lp
+                    setOnClickListener { df.etTitle.setText(t) }
+                }
+                df.titleChips.addView(chip)
+            }
+        }
+
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.confirm_title)
             .setView(df.root)
@@ -183,27 +203,11 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, R.string.phone_too_short, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                RecordStore.save(this, title, phone, bitmap)
-                bitmap?.recycle()
+                RecordStore.save(this, title, phone)
                 file.delete()
                 Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton(R.string.discard) { _, _ ->
-                bitmap?.recycle()
-                file.delete()
-            }
-            .setOnDismissListener { if (bitmap != null && !bitmap.isRecycled) bitmap.recycle() }
+            .setNegativeButton(R.string.discard) { _, _ -> file.delete() }
             .show()
     }
-
-    private fun decodeSampled(f: File, maxSide: Int): Bitmap? = runCatching {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(f.absolutePath, bounds)
-        var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
-        BitmapFactory.decodeFile(
-            f.absolutePath,
-            BitmapFactory.Options().apply { inSampleSize = sample }
-        )
-    }.getOrNull()
 }

@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">挪车拍记</string>
-    <string name="hint_ready">把镜头对准挡风玻璃上的挪车电话牌，点击快门识别</string>
+    <string name="app_name">小昭拍号码</string>
+    <string name="hint_ready">把镜头对准电话牌，点击快门识别</string>
     <string name="recognizing">正在识别号码…</string>
-    <string name="need_camera">需要摄像头权限才能识别挪车电话</string>
+    <string name="need_camera">需要摄像头权限才能识别号码</string>
     <string name="capture_failed">拍照失败，请重试</string>
     <string name="camera_failed">相机启动失败：%1$s</string>
     <string name="recognize_failed">识别失败：%1$s</string>
     <string name="confirm_title">确认识别结果</string>
-    <string name="default_title">挪车记录 %1$s</string>
-    <string name="untitled">未命名记录</string>
+    <string name="default_title">号码记录 %1$s</string>
+    <string name="untitled">未命名</string>
     <string name="no_text">没有识别到文字，请靠近一些重新拍摄</string>
     <string name="candidates">识别到多个号码候选：%1$s</string>
     <string name="save">保存记录</string>
@@ -17,17 +17,58 @@
     <string name="phone_too_short">号码太短，请检查后重新填写</string>
     <string name="saved">已保存</string>
     <string name="records_entry">记录</string>
-    <string name="records_title">挪车记录</string>
-    <string name="records_empty">还没有记录，去拍一张挪车电话吧</string>
+    <string name="records_title">号码记录</string>
+    <string name="hidden_title">隐藏记录</string>
+    <string name="records_empty">还没有记录，去拍一个号码吧</string>
+    <string name="hidden_empty">隐藏区还没有内容\n列表里长按一条记录 3 秒即可隐藏</string>
     <string name="back">返回</string>
-    <string name="photo">看照片</string>
     <string name="dial">拨打</string>
     <string name="delete">删除</string>
     <string name="cancel">取消</string>
     <string name="delete_confirm">确定删除「%1$s」这条记录吗？</string>
     <string name="no_dialer">本机没有可用的拨号应用</string>
-    <string name="photo_empty">这条记录没有照片</string>
     <string name="hint_title">标题</string>
-    <string name="hint_phone">挪车电话</string>
+    <string name="hint_phone">电话号码</string>
     <string name="raw_text_label">识别到的原始文字（仅供参考）</string>
+
+    <string name="export">导出</string>
+    <string name="export_title">导出%1$s（.xlsx）</string>
+    <string name="export_count">共 %1$d 条记录</string>
+    <string name="save_file">保存到文件</string>
+    <string name="save_file_sub">自选文件夹和文件名，存进手机</string>
+    <string name="share">分享</string>
+    <string name="share_sub">微信 / QQ / 邮件等直接发出去</string>
+    <string name="export_ok">已导出：%1$s</string>
+    <string name="export_failed">导出失败：%1$s</string>
+    <string name="export_empty">暂无记录可导出</string>
+
+    <string name="hide_this">隐藏此记录</string>
+    <string name="restore_show">恢复显示</string>
+    <string name="restore">恢复</string>
+    <string name="restored">已恢复显示</string>
+    <string name="hidden_ok">已隐藏</string>
+
+    <string name="call_count">已拨 %1$d 次</string>
+    <string name="note_hint">备注</string>
+    <string name="note_display">备注：%1$s</string>
+    <string name="note_title">编辑备注</string>
+    <string name="note_sub">%1$s · %2$s</string>
+    <string name="note_saved">备注已保存</string>
+    <string name="quick_tags">快捷标签（点一下填入，可再编辑）</string>
+    <string name="tag_add">＋ 加</string>
+    <string name="tag_manage">长按标签可改名或删除</string>
+    <string name="tag_rename">改名</string>
+    <string name="tag_new_name">新标签名</string>
+    <string name="tag_added">标签已添加</string>
+
+    <string name="pwd_set">首次进入，请设置 4 位密码</string>
+    <string name="pwd_set_again">再次输入以确认</string>
+    <string name="pwd_input">请输入密码</string>
+    <string name="pwd_tip">密码只保存在本机，忘记无法找回，隐藏记录将无法恢复</string>
+    <string name="pwd_bad">密码错误，请重试</string>
+    <string name="pwd_locked">错误次数过多，%1$d 秒后再试</string>
+    <string name="pwd_saved">密码已设置，正在进入</string>
+    <string name="pwd_mismatch">两次输入不一致，重新设置</string>
+    <string name="btn_clear">清空</string>
+    <string name="btn_del">⌫</string>
 </resources>
