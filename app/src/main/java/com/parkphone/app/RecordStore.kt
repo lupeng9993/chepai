@@ -139,6 +139,9 @@ object RecordStore {
     fun setNote(ctx: Context, id: Long, note: String) =
         update(ctx, id) { it.copy(note = note) }
 
+    fun setPhone(ctx: Context, id: Long, phone: String) =
+        update(ctx, id) { it.copy(phone = phone) }
+
     // ---------- 快捷标签 ----------
 
     fun tags(ctx: Context): List<String> {

@@ -358,8 +358,8 @@ class RecordsActivity : AppCompatActivity() {
             b.btnDial.setOnClickListener { dial(rec) }
             b.btnDelete.setOnClickListener { confirmDelete(rec) }
 
-            // 长按 3 秒 → 隐藏/恢复菜单
-            b.root.setOnTouchListener(LongPress3(rec))
+            // 长按 3 秒 → 隐藏/恢复菜单；双击号码 → 修改号码
+            b.root.setOnTouchListener(LongPress3(rec) { showEditPhoneDialog(rec) })
         }
 
         private fun bindDot(dot: View, idx: Int, rec: ParkRecord) {
@@ -380,12 +380,20 @@ class RecordsActivity : AppCompatActivity() {
         }
     }
 
-    /** 按住满 3000ms 触发；提前抬起或移动过多则取消 */
-    private inner class LongPress3(val rec: ParkRecord) : View.OnTouchListener {
+    /**
+     * 长按 3000ms 触发隐藏菜单；
+     * 落点在号码上且两下间隔 < 400ms、每下按住 < 3s 触发双击回调。
+     */
+    private inner class LongPress3(
+        val rec: ParkRecord,
+        val onDoubleTapPhone: () -> Unit
+    ) : View.OnTouchListener {
         private val handler = Handler(Looper.getMainLooper())
         private var startX = 0f
         private var startY = 0f
         private var fired = false
+        private var lastTapUp = 0L
+
         private val timer = Runnable {
             fired = true
             showLongPressMenu(rec)
@@ -406,6 +414,18 @@ class RecordsActivity : AppCompatActivity() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     handler.removeCallbacks(timer)
+                    if (!fired && e.action == MotionEvent.ACTION_UP) {
+                        // 号码位于卡片上部约 40%，用相对本视图的触点坐标判定
+                        val inPhone = e.y < v.height * 0.40f
+                        val now = System.currentTimeMillis()
+                        if (inPhone && now - lastTapUp < 400) {
+                            lastTapUp = 0
+                            fired = true
+                            onDoubleTapPhone()
+                        } else {
+                            lastTapUp = now
+                        }
+                    }
                     return fired
                 }
             }
@@ -447,6 +467,68 @@ class RecordsActivity : AppCompatActivity() {
             .setMessage(getString(R.string.delete_confirm, rec.title))
             .setPositiveButton(R.string.delete) { _, _ ->
                 RecordStore.delete(this, rec)
+                refresh()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    // ---------------- 双击修改号码 ----------------
+
+    private fun showEditPhoneDialog(rec: ParkRecord) {
+        val dayFmt = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
+        val et = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            setText(rec.phone)
+            setSelection(rec.phone.length)
+            textSize = 17f
+            maxLines = 1
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+        }
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        val sub = TextView(this).apply {
+            text = getString(R.string.edit_phone_sub, rec.title, dayFmt.format(Date(rec.time)), rec.callCount)
+            textSize = 12f
+            setTextColor(color(R.color.light_sub))
+        }
+        val warn = TextView(this).apply {
+            textSize = 11f
+            setTextColor(color(R.color.mark_orange))
+        }
+        wrap.addView(sub)
+        wrap.addView(et)
+        wrap.addView(warn)
+
+        // 实时重复提醒：同区内出现相同号码时提示，但仍允许保存
+        val others = RecordStore.all(this, hiddenZone).map { it.phone }.toHashSet()
+        et.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val d = s?.toString()?.filter { it.isDigit() } ?: ""
+                val full = et.text.toString().filter { it.isDigit() || it == '+' }
+                warn.text = if (d.length in 7..12 && full != rec.phone && full in others)
+                    getString(R.string.edit_dup_warn, full) else ""
+            }
+        })
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.edit_phone_title)
+            .setView(wrap)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val phone = et.text.toString().filter { it.isDigit() || it == '+' }
+                val digits = phone.filter { it.isDigit() }
+                if (digits.length !in 7..12) {
+                    Toast.makeText(this, R.string.phone_too_short, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (phone == rec.phone) return@setPositiveButton
+                RecordStore.setPhone(this, rec.id, phone)
+                Toast.makeText(this, R.string.edit_saved, Toast.LENGTH_SHORT).show()
                 refresh()
             }
             .setNegativeButton(R.string.cancel, null)

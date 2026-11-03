@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">小昭拍号码</string>
-    <string name="hint_ready">把镜头对准电话牌，点击快门识别（v1.2）</string>
+    <string name="hint_ready">把镜头对准电话牌，点击快门识别（v1.3）</string>
     <string name="recognizing">正在识别号码…</string>
     <string name="need_camera">需要摄像头权限才能识别号码</string>
     <string name="capture_failed">拍照失败，请重试</string>
@@ -81,6 +81,21 @@
     <string name="import_done">已导入 %1$d 条</string>
     <string name="import_invalid">文件无法识别：不是有效表格或找不到「号码」列</string>
     <string name="import_none">没有可导入的新记录（全部重复或格式问题）</string>
+
+    <string name="manual_entry">手动\n输入</string>
+    <string name="manual_title">手动输入号码</string>
+    <string name="manual_paste">粘贴号码</string>
+    <string name="manual_paste_sub">从剪贴板读取，自动去掉空格横线</string>
+    <string name="manual_no_clip">剪贴板里没有可用号码</string>
+    <string name="manual_hint_mobile">✓ 识别为手机号</string>
+    <string name="manual_hint_landline">✓ 识别为带区号座机</string>
+    <string name="manual_hint_other">✓ 已识别 %1$d 位数字，可保存</string>
+    <string name="manual_hint_short">号码至少 7 位才能保存</string>
+
+    <string name="edit_phone_title">修改号码</string>
+    <string name="edit_phone_sub">%1$s ｜ %2$s · 已拨 %3$d 次</string>
+    <string name="edit_saved">号码已更新</string>
+    <string name="edit_dup_warn">注意：本区内已有相同号码 %1$s</string>
 
     <string name="crash_title">上次运行异常退出</string>
     <string name="crash_copy">复制日志</string>

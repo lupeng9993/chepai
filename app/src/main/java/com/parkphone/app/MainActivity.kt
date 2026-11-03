@@ -24,6 +24,7 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.parkphone.app.databinding.ActivityMainBinding
 import com.parkphone.app.databinding.DialogConfirmBinding
+import com.parkphone.app.databinding.DialogManualBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,6 +54,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.btnShutter.setOnClickListener { takePicture() }
+        binding.btnManual.setOnClickListener { showManualDialog() }
         binding.btnRecords.setOnClickListener {
             startActivity(Intent(this, RecordsActivity::class.java))
         }
@@ -231,5 +233,92 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.discard) { _, _ -> file.delete() }
             .show()
+    }
+
+    // ---------------- 手动输入 ----------------
+
+    private fun showManualDialog() {
+        val dm = DialogManualBinding.inflate(layoutInflater)
+        val fmt = SimpleDateFormat("MM月dd日 HH:mm", Locale.CHINA)
+        dm.etTitle.setText(getString(R.string.default_title, fmt.format(Date())))
+        addTitleChips(dm.titleChips, dm.etTitle)
+
+        fun refreshHint() {
+            val digits = dm.etPhone.text?.toString()?.filter { it.isDigit() } ?: ""
+            dm.tvTypeHint.text = when {
+                digits.isEmpty() -> ""
+                digits.length < 7 -> getString(R.string.manual_hint_short)
+                digits.length == 11 && digits.startsWith("1") -> getString(R.string.manual_hint_mobile)
+                digits.length in 10..12 && digits.startsWith("0") -> getString(R.string.manual_hint_landline)
+                digits.length <= 12 -> getString(R.string.manual_hint_other, digits.length)
+                else -> getString(R.string.manual_hint_short)
+            }
+        }
+        dm.etPhone.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) = refreshHint()
+        })
+
+        dm.btnPaste.setOnClickListener {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+            val clip = cm?.primaryClip
+            val raw = if (clip != null && clip.itemCount > 0)
+                clip.getItemAt(0).coerceToText(this).toString() else ""
+            val found = PhoneExtractor.extract(raw)
+            val target = found.firstOrNull() ?: raw.filter { it.isDigit() }.takeIf { it.length in 7..12 }
+            if (target == null) {
+                Toast.makeText(this, R.string.manual_no_clip, Toast.LENGTH_SHORT).show()
+            } else {
+                dm.etPhone.setText(target)
+                dm.etPhone.setSelection(target.length)
+            }
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.manual_title)
+            .setView(dm.root)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val title = dm.etTitle.text.toString().trim().ifBlank { getString(R.string.untitled) }
+                val phone = dm.etPhone.text.toString().filter { it.isDigit() || it == '+' }
+                val digits = phone.filter { it.isDigit() }
+                if (digits.length !in 7..12) {
+                    Toast.makeText(this, R.string.phone_too_short, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                RecordStore.save(this, title, phone)
+                Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** 历史标题快捷选择行（手动输入弹窗用） */
+    private fun addTitleChips(
+        container: android.widget.LinearLayout,
+        target: com.google.android.material.textfield.TextInputEditText
+    ) {
+        container.removeAllViews()
+        val density = resources.displayMetrics.density
+        RecordStore.titles(this).take(4).forEach { t ->
+            val chip = TextView(this).apply {
+                text = t
+                textSize = 12f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(0xFF1565C0.toInt())
+                background = ContextCompat.getDrawable(this@MainActivity, R.drawable.tag_bg)
+                val h = (10 * density).toInt()
+                val v = (5 * density).toInt()
+                setPadding(h, v, h, v)
+                val lp = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+                lp.marginEnd = (6 * density).toInt()
+                layoutParams = lp
+                setOnClickListener { target.setText(t) }
+            }
+            container.addView(chip)
+        }
     }
 }
