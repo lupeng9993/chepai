@@ -177,6 +177,8 @@ class RecordsActivity : AppCompatActivity() {
             dp.dot3.setBackgroundResource(if (pendingPwd.length >= 4) R.drawable.pwd_dot_on else R.drawable.pwd_dot_off)
         }
 
+        var handleFn: () -> Unit = {}
+
         fun onKey(k: String) {
             when (k) {
                 "del" -> if (pendingPwd.isNotEmpty()) pendingPwd = pendingPwd.dropLast(1)
@@ -185,10 +187,10 @@ class RecordsActivity : AppCompatActivity() {
             }
             dp.tvPwdMsg.text = ""
             render()
-            if (pendingPwd.length == 4) handle()
+            if (pendingPwd.length == 4) handleFn()
         }
 
-        fun handle() {
+        handleFn = fun() {
             if (!verify) {
                 // 设置流程：第一遍暂存，第二遍比对
                 if (firstSetPwd.isEmpty()) {
