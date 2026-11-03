@@ -1,20 +1,27 @@
 package com.parkphone.app
 
 import android.util.Base64
-import org.w3c.dom.Element
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayInputStream
 import java.net.URLDecoder
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import javax.xml.parsers.DocumentBuilderFactory
 
-/** 坚果云 WebDAV 客户端：Basic 鉴权 + AES-GCM 加密，零第三方依赖 */
+/**
+ * 坚果云 WebDAV 客户端：Basic 鉴权 + AES-GCM 加密。
+ * 使用 OkHttp 并强制 HTTP/1.1：Android 默认栈走 HTTP/2 时，
+ * 坚果云服务器会拒绝 PROPFIND/MKCOL 等 WebDAV 方法（返回 403），
+ * HTTP/1.1 下同样的请求已验证通过。
+ */
 object SyncClient {
 
     private val KEY: SecretKeySpec by lazy {
@@ -24,10 +31,15 @@ object SyncClient {
         )
     }
 
-    private fun authHeader(): String =
-        "Basic " + Base64.encodeToString(
-            "${SyncConfig.USER}:${SyncConfig.APP_PWD}".toByteArray(), Base64.NO_WRAP
-        )
+    private val authValue = "Basic " + Base64.encodeToString(
+        "${SyncConfig.USER}:${SyncConfig.APP_PWD}".toByteArray(), Base64.NO_WRAP
+    )
+
+    private val client = OkHttpClient.Builder()
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .connectTimeout(SyncConfig.CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .readTimeout(SyncConfig.READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .build()
 
     // ---------------- 加密 ----------------
 
@@ -52,107 +64,67 @@ object SyncClient {
 
     // ---------------- WebDAV ----------------
 
-    private fun open(method: String, url: String): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            setMethod(this, method)
-            connectTimeout = SyncConfig.CONNECT_TIMEOUT_MS
-            readTimeout = SyncConfig.READ_TIMEOUT_MS
-            doInput = true
-            setRequestProperty("Authorization", authHeader())
-            setRequestProperty("User-Agent", "xiaozhao-sync")
-        }
+    private const val ROOT = "https://dav.jianguoyun.com/dav/"
+    private const val DIR = "sync/"
 
-    /**
-     * Java 标准 HttpURLConnection 的方法白名单不含 WebDAV 动词（PROPFIND/MKCOL），
-     * setRequestMethod 会直接抛异常；按安卓 WebDAV 客户端通用做法反射设置。
-     */
-    private fun setMethod(conn: HttpURLConnection, method: String) {
-        try {
-            conn.setRequestMethod(method)
-            return
-        } catch (_: Throwable) {
+    private fun exec(
+        method: String, rel: String,
+        body: String? = null, depth: String? = null
+    ): Pair<Int, String> = try {
+        val rb = Request.Builder()
+            .url(ROOT + rel)
+            .header("Authorization", authValue)
+            .header("User-Agent", "xiaozhao-sync")
+        if (depth != null) rb.header("Depth", depth)
+        rb.method(method, body?.toRequestBody("text/plain".toMediaTypeOrNull()))
+        client.newCall(rb.build()).execute().use { resp ->
+            resp.code to (resp.body?.string() ?: "")
         }
-        var c: Class<*>? = conn.javaClass
-        while (c != null) {
-            try {
-                val f = c.getDeclaredField("method")
-                f.isAccessible = true
-                f.set(conn, method)
-                return
-            } catch (_: Throwable) {
-                c = c.superclass
-            }
-        }
-        throw IllegalStateException("不支持的方法: $method")
-    }
-
-    // ---------------- 诊断专用（临时，验证通过后随诊断页一起删除） ----------------
-
-    /** 返回 HTTP 状态码与响应文本，供诊断页逐项报告失败原因 */
-    fun raw(method: String, rel: String, body: String? = null): Pair<Int, String> = try {
-        val conn = open(method, "https://dav.jianguoyun.com/dav/" + rel)
-        if (method == "PROPFIND") conn.setRequestProperty("Depth", "0")
-        if (body != null) {
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/octet-stream")
-            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-        }
-        val code = conn.responseCode
-        val txt = runCatching {
-            (if (code in 200..299) conn.inputStream else conn.errorStream)
-                ?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-        }.getOrDefault("")
-        conn.disconnect()
-        code to txt
     } catch (t: Throwable) {
         -1 to (t.message ?: t.javaClass.simpleName)
     }
 
     /** 上传一个加密快照文件；成功返回 true */
-    fun put(name: String, cipherText: String): Boolean = runCatching {
-        val conn = open("PUT", SyncConfig.BASE_URL + name + ".json")
-        conn.doOutput = true
-        conn.setRequestProperty("Content-Type", "application/octet-stream")
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(cipherText) }
-        val code = conn.responseCode
-        conn.disconnect()
-        code in 200..299
-    }.getOrDefault(false)
+    fun put(name: String, cipherText: String): Boolean =
+        exec("PUT", "$DIR$name.json", cipherText).first in 200..299
 
     /** 下载一个文件；不存在或失败返回 null */
-    fun get(name: String): String? = runCatching {
-        val conn = open("GET", SyncConfig.BASE_URL + name + ".json")
-        val code = conn.responseCode
-        val body = if (code in 200..299)
-            conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) } else null
-        conn.disconnect()
-        body
-    }.getOrNull()
+    fun get(name: String): String? {
+        val (code, body) = exec("GET", "$DIR$name.json")
+        return if (code == 200) body else null
+    }
+
+    /** 删除一个文件（诊断清理用） */
+    fun delete(name: String): Boolean =
+        exec("DELETE", "$DIR$name.json").first in 200..299
 
     /** 列出同步目录下的设备文件名（不含扩展名）；失败返回 null */
-    fun list(): List<String>? = runCatching {
-        val conn = open("PROPFIND", SyncConfig.BASE_URL.trimEnd('/'))
-        conn.setRequestProperty("Depth", "1")
-        conn.setRequestProperty("Content-Type", "application/xml; charset=utf-8")
-        val code = conn.responseCode
-        if (code !in 200..299) { conn.disconnect(); return null }
-        val xml = BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8)).use {
-            it.readText()
-        }
-        conn.disconnect()
-        val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
-            isNamespaceAware = false
-        }.newDocumentBuilder().parse(
-            java.io.ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8))
-        )
-        val nodes = doc.getElementsByTagName("href")
-        val out = LinkedHashSet<String>()
-        for (i in 0 until nodes.length) {
-            val h = nodes.item(i).textContent ?: continue
-            if (!h.endsWith(".json")) continue
-            val last = h.substringAfterLast('/')
-            out.add(URLDecoder.decode(last.substringBeforeLast(".json"), "UTF-8"))
-        }
-        out.toList()
-    }.getOrNull()
+    fun list(): List<String>? {
+        val (code, xml) = exec("PROPFIND", "sync", depth = "1")
+        if (code !in 200..299) return null
+        return runCatching {
+            val doc = DocumentBuilderFactory.newInstance()
+                .apply { isNamespaceAware = false }
+                .newDocumentBuilder()
+                .parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
+            val nodes = doc.documentElement.getElementsByTagName("href")
+            val out = LinkedHashSet<String>()
+            for (i in 0 until nodes.length) {
+                val h = nodes.item(i).textContent ?: continue
+                if (!h.endsWith(".json")) continue
+                val last = h.substringAfterLast('/')
+                out.add(URLDecoder.decode(last.substringBefore(".json"), "UTF-8"))
+            }
+            out.toList()
+        }.getOrNull()
+    }
+
+    /** 建目录（坚果云不会自动创建，缺失时上传会失败） */
+    fun mkdir(rel: String): Int = exec("MKCOL", rel).first
+
+    // ---------------- 诊断专用（验证通过后随诊断页一起删除） ----------------
+
+    /** 返回 HTTP 状态码与响应文本，供诊断页逐项报告失败原因；rel 从网盘根算起 */
+    fun raw(method: String, rel: String, body: String? = null): Pair<Int, String> =
+        exec(method, rel, body, if (method == "PROPFIND") "0" else null)
 }
