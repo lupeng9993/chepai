@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">小昭拍号码</string>
-    <string name="hint_ready">把镜头对准电话牌，点击快门识别</string>
+    <string name="hint_ready">把镜头对准电话牌，点击快门识别（v1.1）</string>
     <string name="recognizing">正在识别号码…</string>
     <string name="need_camera">需要摄像头权限才能识别号码</string>
     <string name="capture_failed">拍照失败，请重试</string>
