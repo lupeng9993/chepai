@@ -62,6 +62,28 @@ object SyncClient {
             setRequestProperty("User-Agent", "xiaozhao-sync")
         }
 
+    // ---------------- 诊断专用（临时，验证通过后随诊断页一起删除） ----------------
+
+    /** 返回 HTTP 状态码与响应文本，供诊断页逐项报告失败原因 */
+    fun raw(method: String, rel: String, body: String? = null): Pair<Int, String> = try {
+        val conn = open(method, "https://dav.jianguoyun.com/dav/" + rel)
+        if (method == "PROPFIND") conn.setRequestProperty("Depth", "0")
+        if (body != null) {
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/octet-stream")
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        }
+        val code = conn.responseCode
+        val txt = runCatching {
+            (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
+        }.getOrDefault("")
+        conn.disconnect()
+        code to txt
+    } catch (t: Throwable) {
+        -1 to (t.message ?: t.javaClass.simpleName)
+    }
+
     /** 上传一个加密快照文件；成功返回 true */
     fun put(name: String, cipherText: String): Boolean = runCatching {
         val conn = open("PUT", SyncConfig.BASE_URL + name + ".json")

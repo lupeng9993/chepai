@@ -34,6 +34,10 @@
             android:name=".SyncDevicesActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".SyncDiagActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".SyncReceiver"
             android:exported="false" />

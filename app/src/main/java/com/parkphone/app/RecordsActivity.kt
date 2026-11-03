@@ -112,6 +112,9 @@ class RecordsActivity : AppCompatActivity() {
                 if (hiddenZone) exitHidden() else finish()
             }
             binding.btnExport.setOnClickListener { showExportMenu() }
+            binding.btnDiag.setOnClickListener {
+                startActivity(Intent(this, SyncDiagActivity::class.java))
+            }
             binding.btnImport.setOnClickListener {
                 openDoc.launch(arrayOf("*/*"))
             }

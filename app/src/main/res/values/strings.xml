@@ -132,6 +132,7 @@
     <string name="devname_empty">请输入至少 4 位数字</string>
 
     <string name="hidden_admin_title">本机设置</string>
+    <string name="diag_btn">测试</string>
     <string name="token_title">接收</string>
     <string name="token_add">添加接收令牌</string>
     <string name="token_added">已添加，本机现在是接收端\n点这条记录的备注进入同步</string>
