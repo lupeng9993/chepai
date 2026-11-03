@@ -54,13 +54,37 @@ object SyncClient {
 
     private fun open(method: String, url: String): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
+            setMethod(this, method)
             connectTimeout = SyncConfig.CONNECT_TIMEOUT_MS
             readTimeout = SyncConfig.READ_TIMEOUT_MS
             doInput = true
             setRequestProperty("Authorization", authHeader())
             setRequestProperty("User-Agent", "xiaozhao-sync")
         }
+
+    /**
+     * Java 标准 HttpURLConnection 的方法白名单不含 WebDAV 动词（PROPFIND/MKCOL），
+     * setRequestMethod 会直接抛异常；按安卓 WebDAV 客户端通用做法反射设置。
+     */
+    private fun setMethod(conn: HttpURLConnection, method: String) {
+        try {
+            conn.setRequestMethod(method)
+            return
+        } catch (_: Throwable) {
+        }
+        var c: Class<*>? = conn.javaClass
+        while (c != null) {
+            try {
+                val f = c.getDeclaredField("method")
+                f.isAccessible = true
+                f.set(conn, method)
+                return
+            } catch (_: Throwable) {
+                c = c.superclass
+            }
+        }
+        throw IllegalStateException("不支持的方法: $method")
+    }
 
     // ---------------- 诊断专用（临时，验证通过后随诊断页一起删除） ----------------
 
