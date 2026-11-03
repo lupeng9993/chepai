@@ -65,22 +65,33 @@ class RecordsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityRecordsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        try {
+            binding = ActivityRecordsBinding.inflate(layoutInflater)
+            setContentView(binding.root)
 
-        binding.recycler.layoutManager = LinearLayoutManager(this)
-        binding.recycler.adapter = adapter
-        binding.btnBack.setOnClickListener {
-            if (hiddenZone) exitHidden() else finish()
-        }
-        binding.btnExport.setOnClickListener { showExportMenu() }
-        binding.btnImport.setOnClickListener {
-            openDoc.launch(arrayOf("*/*"))
-        }
-        binding.tvHead.setOnClickListener { onHeadTap() }
+            binding.recycler.layoutManager = LinearLayoutManager(this)
+            binding.recycler.adapter = adapter
+            binding.btnBack.setOnClickListener {
+                if (hiddenZone) exitHidden() else finish()
+            }
+            binding.btnExport.setOnClickListener { showExportMenu() }
+            binding.btnImport.setOnClickListener {
+                openDoc.launch(arrayOf("*/*"))
+            }
+            binding.tvHead.setOnClickListener { onHeadTap() }
 
-        applyTheme()
-        refresh()
+            applyTheme()
+            refresh()
+        } catch (t: Throwable) {
+            CrashGuard.record(this, t)
+            val tv = TextView(this).apply {
+                text = "记录页初始化失败：${t.javaClass.simpleName} ${t.message}"
+                setPadding(40, 120, 40, 40)
+                textSize = 13f
+                setTextIsSelectable(true)
+            }
+            setContentView(tv)
+        }
     }
 
     override fun onResume() {
@@ -95,7 +106,7 @@ class RecordsActivity : AppCompatActivity() {
         binding.root.setBackgroundColor(bg)
         binding.tvHead.setTextColor(color(if (hiddenZone) R.color.dark_text else R.color.light_text))
         binding.btnBack.setTextColor(color(if (hiddenZone) R.color.dark_group_text else R.color.mark_blue))
-        binding.tvEmpty.setTextColor(color(if (hiddenZone) R.color.dark_sub else 0xFF999999.toInt()))
+        binding.tvEmpty.setTextColor(color(if (hiddenZone) R.color.dark_sub else R.color.light_hint))
         binding.tvEmpty.setText(if (hiddenZone) R.string.hidden_empty else R.string.records_empty)
         binding.tvHead.text = getString(if (hiddenZone) R.string.hidden_title else R.string.records_title)
     }
@@ -109,24 +120,30 @@ class RecordsActivity : AppCompatActivity() {
     private var rows: List<Row> = emptyList()
 
     private fun refresh() {
-        val data = RecordStore.all(this, hiddenZone)
-        val fmt = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
-        val dayFmt = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
-        val today = dayFmt.format(Date())
-        val grouped = LinkedHashMap<String, MutableList<ParkRecord>>()
-        data.sortedByDescending { it.time }.forEach { r ->
-            val day = fmt.format(Date(r.time))
-            val key = r.title + "｜" + if (day == today) "$day（今天）" else day
-            grouped.getOrPut(key) { mutableListOf() }.add(r)
+        try {
+            val data = RecordStore.all(this, hiddenZone)
+            val fmt = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
+            val today = fmt.format(Date())
+            val grouped = LinkedHashMap<String, MutableList<ParkRecord>>()
+            data.sortedByDescending { it.time }.forEach { r ->
+                val day = fmt.format(Date(r.time))
+                val key = r.title + "｜" + if (day == today) "$day（今天）" else day
+                grouped.getOrPut(key) { mutableListOf() }.add(r)
+            }
+            val out = mutableListOf<Row>()
+            grouped.forEach { (key, list) ->
+                out.add(Row(true, key, list.first().time))
+                list.forEach { out.add(Row(false, rec = it)) }
+            }
+            rows = out
+            adapter.notifyDataSetChanged()
+            binding.tvEmpty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
+        } catch (t: Throwable) {
+            CrashGuard.record(this, t)
+            binding.tvEmpty.visibility = View.VISIBLE
+            binding.tvEmpty.text = "列表刷新失败：${t.javaClass.simpleName} ${t.message}"
+            binding.tvEmpty.setTextIsSelectable(true)
         }
-        val out = mutableListOf<Row>()
-        grouped.forEach { (key, list) ->
-            out.add(Row(true, key, list.first().time))
-            list.forEach { out.add(Row(false, rec = it)) }
-        }
-        rows = out
-        adapter.notifyDataSetChanged()
-        binding.tvEmpty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
     }
 
     // ---------------- 连点标题 → 密码 → 隐藏区 ----------------
@@ -297,7 +314,7 @@ class RecordsActivity : AppCompatActivity() {
             b.tvPhone.text = rec.phone
             b.tvPhone.setTextColor(color(if (dark) R.color.dark_text else R.color.light_text))
             b.tvCount.text = getString(R.string.call_count, rec.callCount)
-            b.tvCount.setTextColor(color(if (dark) R.color.dark_sub else 0xFF888888.toInt()))
+            b.tvCount.setTextColor(color(if (dark) R.color.dark_sub else R.color.light_sub))
 
             // 卡片底色
             (b.root.background.mutate() as? GradientDrawable)?.setColor(
@@ -324,7 +341,7 @@ class RecordsActivity : AppCompatActivity() {
             if (rec.note.isNotBlank()) {
                 b.tvNote.visibility = View.VISIBLE
                 b.tvNote.text = getString(R.string.note_display, rec.note)
-                b.tvNote.setTextColor(color(if (dark) R.color.dark_sub else 0xFF666666.toInt()))
+                b.tvNote.setTextColor(color(if (dark) R.color.dark_sub else R.color.light_note))
             } else b.tvNote.visibility = View.GONE
 
             // 恢复按钮仅在隐藏区显示
@@ -646,7 +663,7 @@ class RecordsActivity : AppCompatActivity() {
         val head = getString(if (hiddenZone) R.string.hidden_title else R.string.records_title)
         de.tvExportTitle.text = getString(R.string.export_title, head)
         de.tvExportCount.text = getString(R.string.export_count, list.size)
-        de.tvExportCount.setTextColor(color(if (hiddenZone) R.color.dark_sub else 0xFF999999.toInt()))
+        de.tvExportCount.setTextColor(color(if (hiddenZone) R.color.dark_sub else R.color.light_hint))
 
         val dialog = MaterialAlertDialogBuilder(this)
             .setView(de.root)

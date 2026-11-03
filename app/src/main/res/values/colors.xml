@@ -10,6 +10,8 @@
     <color name="light_stroke">#E3E6EA</color>
     <color name="light_text">#333333</color>
     <color name="light_sub">#888888</color>
+    <color name="light_hint">#999999</color>
+    <color name="light_note">#666666</color>
     <color name="group_bg">#E7EEF6</color>
     <color name="group_text">#3D5A75</color>
     <color name="dark_bg">#1C2733</color>
