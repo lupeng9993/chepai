@@ -10,7 +10,7 @@
 
 ## 技术栈
 - Kotlin + 传统 View（ViewBinding）
-- CameraX 1.3.4 / ML Kit text-recognition-chinese 1.6.0
+- CameraX 1.3.4 / ML Kit text-recognition-chinese 16.0.1
 - minSdk 26（Android 8.0+），targetSdk 34
 
 ## 本地开发

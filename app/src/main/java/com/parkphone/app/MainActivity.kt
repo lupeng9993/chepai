@@ -17,12 +17,10 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.concurrent.futures.await
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.parkphone.app.databinding.ActivityMainBinding
@@ -30,9 +28,6 @@ import com.parkphone.app.databinding.DialogConfirmBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -79,19 +74,26 @@ class MainActivity : AppCompatActivity() {
     private fun startCamera() {
         lifecycleScope.launch {
             try {
-                val provider = ProcessCameraProvider.getInstance(this@MainActivity).await()
-                provider.unbindAll()
-                val preview = Preview().apply {
-                    surfaceProvider = binding.previewView.surfaceProvider
+                val provider = withContext(Dispatchers.IO) {
+                    ProcessCameraProvider.getInstance(this@MainActivity).get()
                 }
-                imageCapture = ImageCapture.Builder()
+                provider.unbindAll()
+                val preview = Preview.Builder().build().apply {
+                    setSurfaceProvider(binding.previewView.surfaceProvider)
+                }
+                val capture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .build()
+                imageCapture = capture
                 provider.bindToLifecycle(
-                    this@MainActivity, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
+                    this@MainActivity, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture
                 )
             } catch (t: Throwable) {
-                Toast.makeText(this@MainActivity, "相机启动失败：${t.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.camera_failed, t.message ?: t.javaClass.simpleName),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
@@ -125,40 +127,34 @@ class MainActivity : AppCompatActivity() {
 
     private fun recognize(file: File) {
         binding.status.setText(R.string.recognizing)
-        lifecycleScope.launch {
-            try {
-                val image = withContext(Dispatchers.IO) {
-                    InputImage.fromFilePath(this@MainActivity, Uri.fromFile(file))
-                }
-                val text = recognizer.await(image)
-                val phones = PhoneExtractor.extract(text)
-                val bitmap = withContext(Dispatchers.IO) { decodeSampled(file, 1280) }
-                showConfirmDialog(file, text, phones, bitmap)
-            } catch (t: Throwable) {
-                file.delete()
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.recognize_failed, t.message ?: t.javaClass.simpleName),
-                    Toast.LENGTH_SHORT
-                ).show()
-            } finally {
-                binding.btnShutter.isEnabled = true
-                binding.status.setText(R.string.hint_ready)
-            }
+        val image = try {
+            InputImage.fromFilePath(this, Uri.fromFile(file))
+        } catch (t: Throwable) {
+            onRecognizeFailed(file, t)
+            return
         }
+        recognizer.process(image)
+            .addOnSuccessListener { result ->
+                val text = result.text
+                lifecycleScope.launch {
+                    val bitmap = withContext(Dispatchers.IO) { decodeSampled(file, 1280) }
+                    binding.btnShutter.isEnabled = true
+                    binding.status.setText(R.string.hint_ready)
+                    showConfirmDialog(file, text, PhoneExtractor.extract(text), bitmap)
+                }
+            }
+            .addOnFailureListener { e -> onRecognizeFailed(file, e) }
     }
 
-    /** 把 ML Kit 的 Task 包装成挂起函数，不额外引入协程扩展库 */
-    private suspend fun com.google.mlkit.vision.text.TextRecognizer.await(
-        image: InputImage
-    ): String = suspendCancellableCoroutine { cont ->
-        process(image)
-            .addOnSuccessListener { result: Text ->
-                if (cont.isActive) cont.resume(result.text)
-            }
-            .addOnFailureListener { e: Exception ->
-                if (cont.isActive) cont.resumeWithException(e)
-            }
+    private fun onRecognizeFailed(file: File, t: Throwable) {
+        file.delete()
+        binding.btnShutter.isEnabled = true
+        binding.status.setText(R.string.hint_ready)
+        Toast.makeText(
+            this,
+            getString(R.string.recognize_failed, t.message ?: t.javaClass.simpleName),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun showConfirmDialog(
@@ -196,7 +192,7 @@ class MainActivity : AppCompatActivity() {
                 bitmap?.recycle()
                 file.delete()
             }
-            .setOnDismissListener { bitmap?.recycle() }
+            .setOnDismissListener { if (bitmap != null && !bitmap.isRecycled) bitmap.recycle() }
             .show()
     }
 

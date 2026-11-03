@@ -5,6 +5,7 @@
     <string name="recognizing">正在识别号码…</string>
     <string name="need_camera">需要摄像头权限才能识别挪车电话</string>
     <string name="capture_failed">拍照失败，请重试</string>
+    <string name="camera_failed">相机启动失败：%1$s</string>
     <string name="recognize_failed">识别失败：%1$s</string>
     <string name="confirm_title">确认识别结果</string>
     <string name="default_title">挪车记录 %1$s</string>
