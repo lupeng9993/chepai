@@ -62,7 +62,7 @@ object RecordStore {
         return out.toList()
     }
 
-    fun save(ctx: Context, title: String, phone: String) {
+    fun save(ctx: Context, title: String, phone: String, hidden: Boolean = false) {
         val arr = dump(ctx)
         arr.put(
             JSONObject()
@@ -73,7 +73,7 @@ object RecordStore {
                 .put("callCount", 0)
                 .put("color", 3)
                 .put("note", "")
-                .put("hidden", false)
+                .put("hidden", hidden)
         )
         write(ctx, arr)
     }
@@ -250,5 +250,7 @@ object RecordStore {
     private fun write(ctx: Context, arr: JSONArray) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY, arr.toString()).apply()
+        // 任何本地改动后：上传端静默同步普通区快照（接收端不上传）
+        runCatching { SyncEngine.onLocalChanged(ctx) }
     }
 }

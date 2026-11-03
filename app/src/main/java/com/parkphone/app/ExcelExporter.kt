@@ -16,8 +16,9 @@ object ExcelExporter {
 
     private val DATE_FMT = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
 
-    fun export(records: List<ParkRecord>, isHidden: Boolean): Pair<String, ByteArray> {
-        val head = if (isHidden) "隐藏名单" else "号码记录"
+    fun export(records: List<ParkRecord>, isHidden: Boolean, deviceTag: String = ""): Pair<String, ByteArray> {
+        val head = if (deviceTag.isNotEmpty()) "孩子记录_$deviceTag"
+            else if (isHidden) "隐藏名单" else "号码记录"
         val name = head + "_" +
             SimpleDateFormat("yyyyMMdd_HHmm", Locale.CHINA).format(Date()) + ".xlsx"
 
@@ -42,8 +43,8 @@ object ExcelExporter {
             cell(sb, 2, row, "inlineStr", esc(r.phone))
             sb.append("<c r=\"").append(colName(3)).append(row).append("\">")
                 .append("<v>").append(r.callCount).append("</v></c>")
-            cell(sb, 4, row, "s", if (r.color in 0..2) colorNames[r.color] else "无")
-            cell(sb, 5, row, "s", esc(r.note))
+            cell(sb, 4, row, "inlineStr", if (r.color in 0..2) colorNames[r.color] else "无")
+            cell(sb, 5, row, "inlineStr", esc(r.note))
             sb.append("</row>")
             row++
         }

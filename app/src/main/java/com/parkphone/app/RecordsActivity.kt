@@ -47,11 +47,48 @@ class RecordsActivity : AppCompatActivity() {
     /** false=正常区（浅色），true=隐藏区（深色） */
     private var hiddenZone = false
 
+    /** true=正在查看对端（孩子）数据分区，仅接收端可达 */
+    private var peerZone = false
+
     // 连点标题计数
     private var tapCount = 0
     private var lastTapAt = 0L
 
     private val COLOR_RES = intArrayOf(R.color.mark_blue, R.color.mark_green, R.color.mark_orange)
+
+    // ------- 对端只读展示的本机覆盖层：拨打加次 / 颜色 / 备注 / 隐藏 -------
+    private val ovPrefs by lazy { getSharedPreferences("peer_ov", MODE_PRIVATE) }
+
+    private data class Override(
+        val add: Int, val color: Int, val hasColor: Boolean,
+        val note: String?, val hide: Boolean
+    )
+
+    private fun overrideOf(id: Long): Override {
+        val s = ovPrefs.getString("o$id", null) ?: return Override(0, 3, false, null, false)
+        val p = s.split("~")
+        return Override(
+            add = p.getOrNull(0)?.toIntOrNull() ?: 0,
+            color = p.getOrNull(1)?.toIntOrNull() ?: 3,
+            hasColor = p.getOrNull(2) == "1",
+            note = p.getOrNull(3)?.ifBlank { null },
+            hide = p.getOrNull(4) == "1"
+        )
+    }
+
+    private fun saveOverride(id: Long, o: Override) {
+        ovPrefs.edit().putString("o$id", "${o.add}~${o.color}~${if (o.hasColor) 1 else 0}~${o.note ?: ""}~${if (o.hide) 1 else 0}").apply()
+    }
+
+    /** 把对端记录套上本机覆盖层后的显示值 */
+    private fun applied(rec: ParkRecord): ParkRecord {
+        val o = overrideOf(rec.id)
+        return rec.copy(
+            callCount = rec.callCount + o.add,
+            color = if (o.hasColor) o.color else rec.color,
+            note = o.note ?: rec.note
+        )
+    }
 
     private val createDoc =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) { uri ->
@@ -79,6 +116,12 @@ class RecordsActivity : AppCompatActivity() {
                 openDoc.launch(arrayOf("*/*"))
             }
             binding.tvHead.setOnClickListener { onHeadTap() }
+        binding.tvHead.setOnLongClickListener {
+            if (hiddenZone) { showHiddenAdminDialog(); true } else false
+        }
+
+            binding.tabLocal.setOnClickListener { setZone(peer = false) }
+            binding.tabPeer.setOnClickListener { setZone(peer = true) }
 
             applyTheme()
             refresh()
@@ -109,41 +152,177 @@ class RecordsActivity : AppCompatActivity() {
         binding.tvEmpty.setTextColor(color(if (hiddenZone) R.color.dark_sub else R.color.light_hint))
         binding.tvEmpty.setText(if (hiddenZone) R.string.hidden_empty else R.string.records_empty)
         binding.tvHead.text = getString(if (hiddenZone) R.string.hidden_title else R.string.records_title)
+
+        // 标签行：仅接收端且非隐藏区
+        binding.tabRow.visibility = if (SyncEngine.isReceiver(this) && !hiddenZone) View.VISIBLE else View.GONE
+        binding.tabLocal.setBackgroundResource(
+            if (peerZone) R.drawable.tag_add_bg else R.drawable.pill_bg
+        )
+        binding.tabLocal.setTextColor(
+            if (peerZone) color(R.color.mark_blue) else 0xFFFFFFFF.toInt()
+        )
+        binding.tabPeer.setBackgroundResource(
+            if (peerZone) R.drawable.pill_bg else R.drawable.tag_add_bg
+        )
+        binding.tabPeer.setTextColor(
+            if (peerZone) 0xFFFFFFFF.toInt() else color(R.color.mark_blue)
+        )
+        binding.tabPeer.text = getString(R.string.tab_peer)
+        // 隐藏导入按钮：接收端在隐藏区外不需要手动导入也保留功能，此处不改动
+    }
+
+    private fun setZone(peer: Boolean) {
+        peerZone = peer
+        applyTheme()
+        refresh()
+    }
+
+    /** 隐藏区长按标题：接收令牌与同步名设置 */
+    private fun showHiddenAdminDialog() {
+        val hasToken = RecordStore.all(this, true)
+            .any { it.phone.filter { c -> c.isDigit() } == SyncConfig.RECEIVER_TOKEN }
+        val actions = arrayOf(
+            if (hasToken) getString(R.string.token_exists)
+            else getString(R.string.token_add),
+            "${getString(R.string.devname_title)}（${SyncEngine.deviceName(this)}）"
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.hidden_admin_title)
+            .setItems(actions) { _, which ->
+                if (which == 0) {
+                    if (hasToken) Toast.makeText(this, R.string.token_exists, Toast.LENGTH_SHORT).show()
+                    else addToken()
+                } else askDeviceName()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun addToken() {
+        RecordStore.save(this, getString(R.string.token_title), SyncConfig.RECEIVER_TOKEN, hidden = true)
+        Toast.makeText(this, R.string.token_added, Toast.LENGTH_LONG).show()
+        refresh()
+    }
+
+    /** 隐藏区长按标题：设置本机同步名（孩子手机尾号后4位） */
+    private fun askDeviceName() {
+        val et = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+            hint = getString(R.string.devname_hint)
+            setText(SyncEngine.deviceName(this@RecordsActivity))
+            setSelectAllOnFocus(true)
+            maxLines = 1
+        }
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        wrap.addView(TextView(this).apply {
+            text = getString(R.string.devname_hint)
+            textSize = 12f
+            setTextColor(color(R.color.light_sub))
+        })
+        wrap.addView(et)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.devname_title)
+            .setView(wrap)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val v = et.text.toString().filter { it.isLetterOrDigit() }
+                if (v.length < 4) {
+                    Toast.makeText(this, R.string.devname_empty, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                SyncEngine.saveDeviceName(this, v)
+                Toast.makeText(this, getString(R.string.devname_saved, v), Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun color(res: Int) = ContextCompat.getColor(this, res)
 
     // ---------------- 数据 ----------------
 
-    private data class Row(val isHeader: Boolean, val headerTitle: String = "", val headerTime: Long = 0, val rec: ParkRecord? = null)
+    private data class Row(
+        val isHeader: Boolean,
+        val headerTitle: String = "",
+        val headerTime: Long = 0,
+        val rec: ParkRecord? = null,
+        val peer: Boolean = false
+    )
 
     private var rows: List<Row> = emptyList()
 
+    private val dayFmt by lazy { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
+
     private fun refresh() {
         try {
-            val data = RecordStore.all(this, hiddenZone)
-            val fmt = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
-            val today = fmt.format(Date())
-            val grouped = LinkedHashMap<String, MutableList<ParkRecord>>()
-            data.sortedByDescending { it.time }.forEach { r ->
-                val day = fmt.format(Date(r.time))
-                val key = r.title + "｜" + if (day == today) "$day（今天）" else day
-                grouped.getOrPut(key) { mutableListOf() }.add(r)
-            }
-            val out = mutableListOf<Row>()
-            grouped.forEach { (key, list) ->
-                out.add(Row(true, key, list.first().time))
-                list.forEach { out.add(Row(false, rec = it)) }
-            }
-            rows = out
+            rows = if (peerZone) peerRows() else localRows()
             adapter.notifyDataSetChanged()
             binding.tvEmpty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
+            if (peerZone && rows.isEmpty()) {
+                binding.tvEmpty.text = getString(R.string.peer_empty)
+            } else if (!hiddenZone) {
+                binding.tvEmpty.setText(R.string.records_empty)
+            } else {
+                binding.tvEmpty.setText(R.string.hidden_empty)
+            }
+            val n = rows.count { !it.isHeader }
+            if (peerZone) {
+                binding.tabPeer.text = "${getString(R.string.tab_peer)} $n"
+            } else {
+                binding.tabLocal.text = "${getString(R.string.tab_local)}（$n）"
+            }
         } catch (t: Throwable) {
             CrashGuard.record(this, t)
             binding.tvEmpty.visibility = View.VISIBLE
             binding.tvEmpty.text = "列表刷新失败：${t.javaClass.simpleName} ${t.message}"
             binding.tvEmpty.setTextIsSelectable(true)
         }
+    }
+
+    private fun localRows(): List<Row> {
+        val data = RecordStore.all(this, hiddenZone)
+        val today = dayFmt.format(Date())
+        val grouped = LinkedHashMap<String, MutableList<ParkRecord>>()
+        data.sortedByDescending { it.time }.forEach { r ->
+            val day = dayFmt.format(Date(r.time))
+            val key = r.title + "｜" + if (day == today) "$day（今天）" else day
+            grouped.getOrPut(key) { mutableListOf() }.add(r)
+        }
+        val out = mutableListOf<Row>()
+        grouped.forEach { (key, list) ->
+            out.add(Row(true, key, list.first().time))
+            list.forEach { out.add(Row(false, rec = it)) }
+        }
+        return out
+    }
+
+    /** 对端分区：一台孩子设备一个组头，组内按设备自己的日期再分 */
+    private fun peerRows(): List<Row> {
+        val out = mutableListOf<Row>()
+        val today = dayFmt.format(Date())
+        val stamp = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
+        PeerStore.peers(this).forEach { peer ->
+            val list = peer.records.map { applied(it) }.filterNot { overrideOf(it.id).hide }
+                .sortedByDescending { it.time }
+            if (list.isEmpty()) return@forEach
+            val head = "📱 ${peer.device} · ${list.size} 条" +
+                if (peer.updatedAt > 0) "（对方上传于 ${stamp.format(Date(peer.updatedAt))}）" else ""
+            out.add(Row(true, head, peer.updatedAt))
+            val grouped = LinkedHashMap<String, MutableList<ParkRecord>>()
+            list.forEach { r ->
+                val day = dayFmt.format(Date(r.time))
+                val key = r.title + "｜" + if (day == today) "$day（今天）" else day
+                grouped.getOrPut(key) { mutableListOf() }.add(r)
+            }
+            grouped.forEach { (key, recs) ->
+                out.add(Row(true, "　" + key, recs.first().time, peer = true))
+                recs.forEach { out.add(Row(false, rec = it, peer = true)) }
+            }
+        }
+        return out
     }
 
     // ---------------- 连点标题 → 密码 → 隐藏区 ----------------
@@ -292,7 +471,7 @@ class RecordsActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             when (holder) {
                 is HeadVH -> holder.bind(rows[position].headerTitle)
-                is RecVH -> rows[position].rec?.let { holder.bind(it) }
+                is RecVH -> rows[position].rec?.let { holder.bind(it, rows[position].peer) }
             }
         }
     }
@@ -309,7 +488,7 @@ class RecordsActivity : AppCompatActivity() {
 
     private inner class RecVH(private val b: ItemRecordBinding) : RecyclerView.ViewHolder(b.root) {
 
-        fun bind(rec: ParkRecord) {
+        fun bind(rec: ParkRecord, peer: Boolean) {
             val dark = hiddenZone
             b.tvPhone.text = rec.phone
             b.tvPhone.setTextColor(color(if (dark) R.color.dark_text else R.color.light_text))
@@ -333,9 +512,9 @@ class RecordsActivity : AppCompatActivity() {
             } else {
                 b.colorBar.visibility = View.INVISIBLE
             }
-            bindDot(b.dotBlue, 0, rec)
-            bindDot(b.dotGreen, 1, rec)
-            bindDot(b.dotOrange, 2, rec)
+            bindDot(b.dotBlue, 0, rec, peer)
+            bindDot(b.dotGreen, 1, rec, peer)
+            bindDot(b.dotOrange, 2, rec, peer)
 
             // 备注行
             if (rec.note.isNotBlank()) {
@@ -344,25 +523,53 @@ class RecordsActivity : AppCompatActivity() {
                 b.tvNote.setTextColor(color(if (dark) R.color.dark_sub else R.color.light_note))
             } else b.tvNote.visibility = View.GONE
 
-            // 恢复按钮仅在隐藏区显示
+            // 恢复按钮：本机隐藏区 或 对端被本机隐藏后
             b.btnRestore.visibility = if (dark) View.VISIBLE else View.GONE
             b.btnRestore.setTextColor(color(R.color.dark_group_text))
             b.btnRestore.setOnClickListener {
-                RecordStore.setHidden(this@RecordsActivity, rec.id, false)
+                if (peer) {
+                    val o = overrideOf(rec.id).copy(hide = false)
+                    saveOverride(rec.id, o)
+                } else {
+                    RecordStore.setHidden(this@RecordsActivity, rec.id, false)
+                }
                 Toast.makeText(this@RecordsActivity, R.string.restored, Toast.LENGTH_SHORT).show()
                 refresh()
             }
 
             b.btnNote.setTextColor(color(if (dark) R.color.dark_group_text else R.color.mark_blue))
-            b.btnNote.setOnClickListener { showNoteDialog(rec) }
-            b.btnDial.setOnClickListener { dial(rec) }
-            b.btnDelete.setOnClickListener { confirmDelete(rec) }
+            b.btnNote.setOnClickListener { showNoteDialog(rec, peer) }
+            b.btnDial.setOnClickListener { dial(rec, peer) }
+            b.btnDelete.setOnClickListener {
+                if (peer) hidePeerLocally(rec) else confirmDelete(rec)
+            }
 
-            // 长按 3 秒 → 隐藏/恢复菜单；双击号码 → 修改号码
-            b.root.setOnTouchListener(LongPress3(rec) { showEditPhoneDialog(rec) })
+            // 长按 3 秒 → 隐藏菜单；双击号码 → 修改号码（对端禁改）
+            // 本机隐藏区的 114 令牌：双击/长按都不生效，改由备注入口承载同步功能
+            val isToken = !peer && hiddenZone &&
+                rec.phone.filter { it.isDigit() } == SyncConfig.RECEIVER_TOKEN
+            if (isToken) {
+                b.root.setOnTouchListener(null)
+            } else {
+                b.root.setOnTouchListener(
+                    LongPress3(rec, peer) { if (!peer) showEditPhoneDialog(rec) }
+                )
+            }
         }
 
-        private fun bindDot(dot: View, idx: Int, rec: ParkRecord) {
+        /** 对端记录：仅在本机隐藏，不动对方源数据 */
+        private fun hidePeerLocally(rec: ParkRecord) {
+            MaterialAlertDialogBuilder(this@RecordsActivity)
+                .setMessage(getString(R.string.peer_hide_confirm, rec.phone))
+                .setPositiveButton(R.string.hide_this) { _, _ ->
+                    saveOverride(rec.id, overrideOf(rec.id).copy(hide = true))
+                    refresh()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+
+        private fun bindDot(dot: View, idx: Int, rec: ParkRecord, peer: Boolean) {
             val selected = rec.color == idx
             dot.setBackgroundResource(
                 if (selected) R.drawable.dot_filled else R.drawable.dot_outline
@@ -374,7 +581,14 @@ class RecordsActivity : AppCompatActivity() {
                 (1.5f * resources.displayMetrics.density).toInt(), 0xFFBBBBBB.toInt()
             )
             dot.setOnClickListener {
-                RecordStore.setColor(this@RecordsActivity, rec.id, idx)
+                if (peer) {
+                    val cur = overrideOf(rec.id)
+                    val hasC = if (rec.color == idx && cur.hasColor) false else true
+                    val newC = if (rec.color == idx && cur.hasColor) 3 else idx
+                    saveOverride(rec.id, cur.copy(color = newC, hasColor = hasC))
+                } else {
+                    RecordStore.setColor(this@RecordsActivity, rec.id, idx)
+                }
                 refresh()
             }
         }
@@ -386,6 +600,7 @@ class RecordsActivity : AppCompatActivity() {
      */
     private inner class LongPress3(
         val rec: ParkRecord,
+        val peer: Boolean,
         val onDoubleTapPhone: () -> Unit
     ) : View.OnTouchListener {
         private val handler = Handler(Looper.getMainLooper())
@@ -396,7 +611,7 @@ class RecordsActivity : AppCompatActivity() {
 
         private val timer = Runnable {
             fired = true
-            showLongPressMenu(rec)
+            showLongPressMenu(rec, peer)
         }
 
         override fun onTouch(v: View, e: MotionEvent): Boolean {
@@ -433,7 +648,27 @@ class RecordsActivity : AppCompatActivity() {
         }
     }
 
-    private fun showLongPressMenu(rec: ParkRecord) {
+    private fun showLongPressMenu(rec: ParkRecord, peer: Boolean) {
+        if (peer) {
+            val o = overrideOf(rec.id)
+            val options = arrayOf(
+                if (o.hide) getString(R.string.restore_show) else getString(R.string.peer_hide_only)
+            )
+            MaterialAlertDialogBuilder(this)
+                .setTitle(rec.phone)
+                .setItems(options) { _, _ ->
+                    saveOverride(rec.id, o.copy(hide = !o.hide))
+                    Toast.makeText(
+                        this,
+                        if (o.hide) R.string.restored else R.string.hidden_ok,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    refresh()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+            return
+        }
         val option = if (hiddenZone) getString(R.string.restore_show) else getString(R.string.hide_this)
         MaterialAlertDialogBuilder(this)
             .setTitle(rec.phone)
@@ -452,8 +687,12 @@ class RecordsActivity : AppCompatActivity() {
 
     // ---------------- 拨打 / 删除 ----------------
 
-    private fun dial(rec: ParkRecord) {
-        RecordStore.addCall(this, rec.id)
+    private fun dial(rec: ParkRecord, peer: Boolean) {
+        if (peer) {
+            saveOverride(rec.id, overrideOf(rec.id).copy(add = overrideOf(rec.id).add + 1))
+        } else {
+            RecordStore.addCall(this, rec.id)
+        }
         refresh()
         try {
             startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${rec.phone}")))
@@ -535,9 +774,17 @@ class RecordsActivity : AppCompatActivity() {
             .show()
     }
 
-    // ---------------- 备注（含可编辑快捷标签） ----------------
+    // ---------------- 备注（含可编辑快捷标签；114 令牌为同步入口） ----------------
 
-    private fun showNoteDialog(rec: ParkRecord) {
+    private fun showNoteDialog(rec: ParkRecord, peer: Boolean) {
+        // 隐藏区里的 114 令牌：备注即同步入口
+        if (!peer && hiddenZone &&
+            rec.phone.filter { it.isDigit() } == SyncConfig.RECEIVER_TOKEN
+        ) {
+            showSyncEntryDialog()
+            return
+        }
+
         val dn = DialogNoteBinding.inflate(layoutInflater)
         dn.tvNoteSub.text = getString(R.string.note_sub, rec.phone, rec.title)
         dn.etNote.setText(rec.note)
@@ -547,12 +794,62 @@ class RecordsActivity : AppCompatActivity() {
             .setTitle(R.string.note_title)
             .setView(dn.root)
             .setPositiveButton(R.string.save) { _, _ ->
-                RecordStore.setNote(this, rec.id, dn.etNote.text.toString().trim())
+                val text = dn.etNote.text.toString().trim()
+                if (peer) saveOverride(rec.id, overrideOf(rec.id).copy(note = text))
+                else RecordStore.setNote(this, rec.id, text)
                 Toast.makeText(this, R.string.note_saved, Toast.LENGTH_SHORT).show()
                 refresh()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    /** 114 备注弹出的同步入口 */
+    private fun showSyncEntryDialog() {
+        val selected = SyncEngine.selectedDevices(this)
+        val msg = StringBuilder()
+            .append(getString(R.string.sync_selected, selected.size))
+        if (lastPullAt > 0) {
+            msg.append("\n")
+                .append(getString(R.string.sync_last_pull, lastPullFmt.format(Date(lastPullAt))))
+        }
+        val tv = TextView(this).apply {
+            text = msg
+            textSize = 13f
+            setPadding(32, 16, 32, 16)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.sync_entry_title)
+            .setView(tv)
+            .setPositiveButton(R.string.sync_pick_senders) { _, _ ->
+                startActivity(Intent(this, SyncDevicesActivity::class.java))
+            }
+            .setNeutralButton(R.string.sync_download_now) { _, _ -> manualDownload() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private var lastPullAt = 0L
+    private val lastPullFmt by lazy { SimpleDateFormat("MM月dd日 HH:mm", Locale.CHINA) }
+
+    private fun manualDownload() {
+        if (SyncEngine.selectedDevices(this).isEmpty()) {
+            Toast.makeText(this, R.string.sync_no_selection, Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, R.string.sync_downloading, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val n = withContext(Dispatchers.IO) {
+                runCatching { SyncEngine.pullAll(this@RecordsActivity) }.getOrDefault(-1)
+            }
+            if (n < 0) {
+                Toast.makeText(this@RecordsActivity, R.string.sync_pull_fail, Toast.LENGTH_LONG).show()
+            } else {
+                lastPullAt = System.currentTimeMillis()
+                Toast.makeText(this@RecordsActivity, getString(R.string.sync_pull_ok, n), Toast.LENGTH_LONG).show()
+                setZone(peer = true)
+            }
+        }
     }
 
     private fun buildTags(dn: DialogNoteBinding, rec: ParkRecord) {
@@ -660,6 +957,47 @@ class RecordsActivity : AppCompatActivity() {
             .show()
     }
 
+    /** 对端分区：单独导出孩子数据 */
+    private fun exportPeerData() {
+        val list = PeerStore.peers(this).flatMap { p ->
+            p.records.map { applied(it) }.filterNot { overrideOf(it.id).hide }
+        }.sortedByDescending { it.time }
+        if (list.isEmpty()) {
+            Toast.makeText(this, R.string.export_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val tag = PeerStore.peers(this).joinToString("-") { it.device }.take(20)
+        val de = DialogExportBinding.inflate(layoutInflater)
+        de.tvExportTitle.text = getString(R.string.export_peer_title)
+        de.tvExportCount.text = getString(R.string.export_count, list.size)
+        de.tvExportCount.setTextColor(color(R.color.light_hint))
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setView(de.root)
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+
+        fun bytes(): Pair<String, ByteArray> = ExcelExporter.export(list, false, tag)
+
+        de.rowSave.setOnClickListener {
+            val (name, data) = bytes()
+            pendingName = name
+            pendingBytes = data
+            dialog.dismiss()
+            try {
+                createDoc.launch(name)
+            } catch (t: ActivityNotFoundException) {
+                Toast.makeText(this, getString(R.string.export_failed, t.message), Toast.LENGTH_SHORT).show()
+            }
+        }
+        de.rowShare.setOnClickListener {
+            val (name, data) = bytes()
+            dialog.dismiss()
+            shareBytes(name, data)
+        }
+        dialog.show()
+    }
+
     // ---------------- 导入 ----------------
 
     private fun importFrom(uri: Uri) {
@@ -736,6 +1074,7 @@ class RecordsActivity : AppCompatActivity() {
     private var pendingName: String = ""
 
     private fun showExportMenu() {
+        if (peerZone) { exportPeerData(); return }
         val list = RecordStore.all(this, hiddenZone)
         if (list.isEmpty()) {
             Toast.makeText(this, R.string.export_empty, Toast.LENGTH_SHORT).show()
