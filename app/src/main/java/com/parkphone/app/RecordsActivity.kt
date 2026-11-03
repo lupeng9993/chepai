@@ -750,7 +750,7 @@ class RecordsActivity : AppCompatActivity() {
             override fun afterTextChanged(s: android.text.Editable?) {
                 val d = s?.toString()?.filter { it.isDigit() } ?: ""
                 val full = et.text.toString().filter { it.isDigit() || it == '+' }
-                warn.text = if (d.length in 7..12 && full != rec.phone && full in others)
+                warn.text = if (d.isNotEmpty() && full != rec.phone && full in others)
                     getString(R.string.edit_dup_warn, full) else ""
             }
         })
@@ -761,7 +761,7 @@ class RecordsActivity : AppCompatActivity() {
             .setPositiveButton(R.string.save) { _, _ ->
                 val phone = et.text.toString().filter { it.isDigit() || it == '+' }
                 val digits = phone.filter { it.isDigit() }
-                if (digits.length !in 7..12) {
+                if (digits.isEmpty()) {
                     Toast.makeText(this, R.string.phone_too_short, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }

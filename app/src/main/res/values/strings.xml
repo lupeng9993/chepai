@@ -14,7 +14,7 @@
     <string name="candidates">识别到多个号码候选：%1$s</string>
     <string name="save">保存记录</string>
     <string name="discard">放弃</string>
-    <string name="phone_too_short">号码太短，请检查后重新填写</string>
+    <string name="phone_too_short">请至少输入一位数字</string>
     <string name="saved">已保存</string>
     <string name="records_entry">记录</string>
     <string name="records_title">号码记录</string>
@@ -90,7 +90,7 @@
     <string name="manual_hint_mobile">✓ 识别为手机号</string>
     <string name="manual_hint_landline">✓ 识别为带区号座机</string>
     <string name="manual_hint_other">✓ 已识别 %1$d 位数字，可保存</string>
-    <string name="manual_hint_short">号码至少 7 位才能保存</string>
+    <string name="manual_hint_len">已输入 %1$d 位，请确认无误</string>
 
     <string name="edit_phone_title">修改号码</string>
     <string name="edit_phone_sub">%1$s ｜ %2$s · 已拨 %3$d 次</string>

@@ -223,7 +223,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.save) { _, _ ->
                 val title = df.etTitle.text.toString().trim().ifBlank { getString(R.string.untitled) }
                 val phone = df.etPhone.text.toString().filter { it.isDigit() || it == '+' }
-                if (phone.length < 7) {
+                if (phone.none { it.isDigit() }) {
                     Toast.makeText(this, R.string.phone_too_short, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
@@ -247,11 +247,10 @@ class MainActivity : AppCompatActivity() {
             val digits = dm.etPhone.text?.toString()?.filter { it.isDigit() } ?: ""
             dm.tvTypeHint.text = when {
                 digits.isEmpty() -> ""
-                digits.length < 7 -> getString(R.string.manual_hint_short)
                 digits.length == 11 && digits.startsWith("1") -> getString(R.string.manual_hint_mobile)
                 digits.length in 10..12 && digits.startsWith("0") -> getString(R.string.manual_hint_landline)
-                digits.length <= 12 -> getString(R.string.manual_hint_other, digits.length)
-                else -> getString(R.string.manual_hint_short)
+                digits.length > 12 -> getString(R.string.manual_hint_len, digits.length)
+                else -> getString(R.string.manual_hint_other, digits.length)
             }
         }
         dm.etPhone.addTextChangedListener(object : android.text.TextWatcher {
@@ -266,7 +265,7 @@ class MainActivity : AppCompatActivity() {
             val raw = if (clip != null && clip.itemCount > 0)
                 clip.getItemAt(0).coerceToText(this).toString() else ""
             val found = PhoneExtractor.extract(raw)
-            val target = found.firstOrNull() ?: raw.filter { it.isDigit() }.takeIf { it.length in 7..12 }
+            val target = found.firstOrNull() ?: raw.filter { it.isDigit() }.takeIf { it.isNotEmpty() }
             if (target == null) {
                 Toast.makeText(this, R.string.manual_no_clip, Toast.LENGTH_SHORT).show()
             } else {
@@ -282,7 +281,7 @@ class MainActivity : AppCompatActivity() {
                 val title = dm.etTitle.text.toString().trim().ifBlank { getString(R.string.untitled) }
                 val phone = dm.etPhone.text.toString().filter { it.isDigit() || it == '+' }
                 val digits = phone.filter { it.isDigit() }
-                if (digits.length !in 7..12) {
+                if (digits.isEmpty()) {
                     Toast.makeText(this, R.string.phone_too_short, Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }

@@ -57,7 +57,7 @@ object ExcelImporter {
                 val (num, cells) = all[k]
                 if (cells.all { it.isBlank() }) continue
                 val phone = digitsOf(cellAt(cols.phone, cells))
-                if (phone.length !in 7..12) { bad.add(num); continue }
+                if (phone.isEmpty()) { bad.add(num); continue }
                 val cRaw = cellAt(cols.count, cells).trim()
                 rows.add(
                     ParsedRow(
